@@ -63,18 +63,13 @@ def get_data(settings):
 
 def init_settings():
     settings = {}
-    settings['word_embedding_size'] = 64
-    settings['sentence_embedding_size'] = 64
-    settings['depth'] = 6
+    settings['word_embedding_size'] = 128
+    settings['sentence_embedding_size'] = 128
     settings['RL_dim'] = 128
-    settings['dropout_W'] = 0.2
-    settings['dropout_U'] = 0.2
     settings['hidden_dims'] = [64]
     settings['dense_dropout'] = 0.5
-    settings['bucket_size_step'] = 4
-    settings['batch_size'] = 8
-    settings['max_sentence_len_for_model'] = 32
-    settings['max_sentence_len_for_generator'] = 32
+    settings['batch_size'] = 64
+    settings['max_len'] = 64
     settings['max_features']=15000
     settings['with_sentences']=False
     return settings
@@ -83,14 +78,14 @@ def init_settings():
 
 def build_encoder(data, settings):
     sys.stdout.write('Building model\n')
-    data_input = Input(shape=(settings['max_sentence_len_for_model'],))
+    data_input = Input(shape=(settings['max_len'],))
     embedding = Embedding(input_dim=settings['max_features']+3,
                           output_dim=settings['word_embedding_size'],
                           mask_zero=True)(data_input)
     encoder = Encoder(input_dim=settings['word_embedding_size'],
                       hidden_dim=settings['sentence_embedding_size'],
                       RL_dim=settings['RL_dim'],
-                      max_len=settings['max_sentence_len_for_model'],
+                      max_len=settings['max_len'],
                       batch_size=settings['batch_size'],
                       name='encoder')(embedding)
     layer = encoder
@@ -107,14 +102,14 @@ def build_encoder(data, settings):
 
 def build_predictor(data, settings):
     sys.stdout.write('Building model\n')
-    data_input = Input(shape=(settings['max_sentence_len_for_model'],))
+    data_input = Input(shape=(settings['max_len'],))
     embedding = Embedding(input_dim=settings['max_features']+3,
                           output_dim=settings['word_embedding_size'],
                           mask_zero=True)(data_input)
     encoder = Predictor(input_dim=settings['word_embedding_size'],
                         hidden_dim=settings['sentence_embedding_size'],
                         RL_dim=settings['RL_dim'],
-                        max_len=settings['max_sentence_len_for_model'],
+                        max_len=settings['max_len'],
                         batch_size=settings['batch_size'],
                         name='encoder')(embedding)
     layer = encoder[0]
@@ -156,7 +151,7 @@ def build_generator_HRNN(data, settings, indexes):
             if len(walk_order) == 0:
                 walk_order = list(indexes)
                 np.random.shuffle(walk_order)
-            if len(sentence) > settings['max_sentence_len_for_generator']:
+            if len(sentence) > settings['max_len']:
                 continue
 
             batch.append((sentence, label))
@@ -172,7 +167,7 @@ def build_generator_HRNN(data, settings, indexes):
     return generator()
 
 def build_batch(data, settings, sentence_batch):
-    X = np.zeros((settings['batch_size'], settings['max_sentence_len_for_model']))
+    X = np.zeros((settings['batch_size'], settings['max_len']))
     Y = np.zeros((settings['batch_size'], settings['num_of_classes']), dtype=np.bool)
     for i, sentence_tuple in enumerate(sentence_batch):
         for idx, word in enumerate(sentence_tuple[0]):
@@ -180,7 +175,7 @@ def build_batch(data, settings, sentence_batch):
                 X[i][idx] = data['word_corpus_encode'][word]+1
             else:
                 X[i][idx] = settings['max_features']+1
-        X[i][min(len(sentence_tuple[0]), settings['max_sentence_len_for_model']-1)] = settings['max_features']+2
+        X[i][min(len(sentence_tuple[0]), settings['max_len']-1)] = settings['max_features']+2
         Y[i][data['labels'].index(sentence_tuple[1])] = True
     return X, Y
 
@@ -227,7 +222,7 @@ def run_training_RL(data, objects, settings):
     encoder = objects['encoder']
     predictor = objects['predictor']
     rl_model = objects['rl_model']
-    epoch_size = int(len(objects['train_indexes'])/(100*settings['batch_size']))
+    epoch_size = int(len(objects['train_indexes'])/(10*settings['batch_size']))
 
 
     for epoch in range(1):
@@ -239,12 +234,17 @@ def run_training_RL(data, objects, settings):
             batch = next(objects['data_gen'])
             loss1 = encoder.train_on_batch(batch[0], batch[1])
 
+            predictor.layers[1].W.set_value(K.get_value(encoder.layers[1].W))
             predictor.layers[2].W_emb.set_value(K.get_value(encoder.layers[2].W_emb))
             predictor.layers[2].b_emb.set_value(K.get_value(encoder.layers[2].b_emb))
             predictor.layers[2].W_R.set_value(K.get_value(encoder.layers[2].W_R))
             predictor.layers[2].b_R.set_value(K.get_value(encoder.layers[2].b_R))
+            predictor.layers[3].W.set_value(K.get_value(encoder.layers[3].W))
+            predictor.layers[3].b.set_value(K.get_value(encoder.layers[3].b))
+            predictor.layers[6].W.set_value(K.get_value(encoder.layers[6].W))
+            predictor.layers[6].b.set_value(K.get_value(encoder.layers[6].b))
 
-            y_pred = predictor.predict(batch[0])
+            y_pred = predictor.predict_on_batch(batch[0])
 
             output = y_pred[0]
             stack_current_value = y_pred[1]
@@ -341,8 +341,3 @@ def train(filename):
 
 if __name__=="__main__":
     train("1")
-
-
-
-
-
