@@ -5,6 +5,7 @@ from keras.initializations import glorot_uniform
 
 import theano as T
 import theano.tensor as TS
+from theano.printing import Print
 from Base import Base
 
 class Predictor(Base):
@@ -34,36 +35,36 @@ class Predictor(Base):
         cursors = K.concatenate([K.ones((self.batch_size, 1)), K.zeros((self.batch_size, self.max_len-1))], axis=1)
         stack_mask = K.zeros((self.batch_size, self.max_len))
 
-        initial_prev_value = K.zeros((self.batch_size, self.hidden_dim))
-        initial_prev_prev_value = K.zeros((self.batch_size, self.hidden_dim))
-        initial_current_value = K.zeros((self.batch_size, self.hidden_dim))
+        initial_stack_current_value = K.zeros((self.batch_size, self.hidden_dim))
+        initial_stack_prev_value = K.zeros((self.batch_size, self.hidden_dim))
+        initial_input_current_value = K.zeros((self.batch_size, self.hidden_dim))
         initial_policy = K.zeros((self.batch_size, 2))
         initial_policy_calculated = K.zeros((self.batch_size,), dtype='int16')
 
 
         results, _ = T.scan(self.predictor_step,
                             outputs_info=[stack, cursors, stack_mask,
-                                          initial_prev_value, initial_prev_prev_value, initial_current_value, initial_policy, initial_policy_calculated],
+                                          initial_stack_current_value, initial_stack_prev_value, initial_input_current_value, initial_policy, initial_policy_calculated],
                             non_sequences=[input, mask],
                             n_steps=2*self.max_len)
-        prev_values = results[3]
-        prev_prev_values = results[4]
-        current_values = results[5]
+        stack_current_values = results[3]
+        stack_prev_values = results[4]
+        input_current_values = results[5]
         policy_values = results[6]
         policy_calculated = results[7]
 
-        prev_values = prev_values.dimshuffle([1,0,2])
-        prev_prev_values = prev_prev_values.dimshuffle([1,0,2])
-        current_values = current_values.dimshuffle([1,0,2])
+        stack_current_values = stack_current_values.dimshuffle([1,0,2])
+        stack_prev_values = stack_prev_values.dimshuffle([1,0,2])
+        input_current_values = input_current_values.dimshuffle([1,0,2])
         policy_values = policy_values.dimshuffle([1,0,2])
         policy_calculated = policy_calculated.dimshuffle([1,0])
 
-        return [results[0][-1,:,0,self.hidden_dim:], prev_values, prev_prev_values, current_values, policy_values, policy_calculated]
+        return [results[0][-1,:,0,self.hidden_dim:], stack_current_values, stack_prev_values, input_current_values, policy_values, policy_calculated]
 
 
     #1 = SHIFT
     #0 = REDUCE
-    def predictor_step(self, stack, cursors, stack_mask, prev_value_tm1, prev_prev_value_tm1, current_value_tm1, policy_tm1, policy_calculated_tm1, data, mask):
+    def predictor_step(self, stack, cursors, stack_mask, stack_current_value_tm1, stack_prev_value_tm1, input_current_value_tm1, policy_tm1, policy_calculated_tm1, data, mask):
         value_masks = self.get_value_masks(cursors, stack_mask)
         values = self.get_values(stack, data, value_masks)
 
@@ -91,7 +92,8 @@ class Predictor(Base):
         no_action_mask = TS.extra_ops.repeat(no_action_mask, 2*self.hidden_dim, axis=2)
         new_stack = K.switch(no_action_mask, stack, new_stack)
 
-        return new_stack, new_cursors, new_stack_mask, \
-               values['stack_prev'][:, self.hidden_dim:], values['stack_prev_prev'][:, self.hidden_dim:], values['input_current'][:, self.hidden_dim:], policy, policy_calculated
+        stack_current_value = values['stack_current'][:, self.hidden_dim:]
+        stack_prev_value = values['stack_prev'][:, self.hidden_dim:]
+        input_current_value = values['input_current'][:, self.hidden_dim:]
 
-
+        return new_stack, new_cursors, new_stack_mask, stack_current_value, stack_prev_value, input_current_value, policy, policy_calculated

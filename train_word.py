@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import sys
-from math import ceil
 
 
 from keras.models import Model
@@ -65,7 +64,7 @@ def get_data(settings):
 def init_settings():
     settings = {}
     settings['word_embedding_size'] = 64
-    settings['sentence_embedding_size'] = 128
+    settings['sentence_embedding_size'] = 64
     settings['depth'] = 6
     settings['RL_dim'] = 128
     settings['dropout_W'] = 0.2
@@ -74,8 +73,8 @@ def init_settings():
     settings['dense_dropout'] = 0.5
     settings['bucket_size_step'] = 4
     settings['batch_size'] = 8
-    settings['max_sentence_len_for_model'] = 16
-    settings['max_sentence_len_for_generator'] = 16
+    settings['max_sentence_len_for_model'] = 32
+    settings['max_sentence_len_for_generator'] = 32
     settings['max_features']=15000
     settings['with_sentences']=False
     return settings
@@ -133,12 +132,12 @@ def build_predictor(data, settings):
 
 
 def build_RL_model(settings):
-    x_input = Input(shape=(settings['word_embedding_size']+settings['sentence_embedding_size'],))
-    h_tm1_input = Input(shape=(settings['word_embedding_size']+settings['sentence_embedding_size'],))
-    action_input = Input(shape=(1,))
+    prev_input = Input(shape=(settings['sentence_embedding_size'],))
+    prev_prev_input = Input(shape=(settings['sentence_embedding_size'],))
+    x_input = Input(shape=(settings['sentence_embedding_size'],))
     layer = RL_layer(hidden_dim=settings['sentence_embedding_size'],
-                     RL_dim=settings['RL_dim'])([x_input, h_tm1_input, action_input])
-    model = Model(input=[x_input, h_tm1_input, action_input], output=layer)
+                     RL_dim=settings['RL_dim'])([prev_input, prev_prev_input, x_input])
+    model = Model(input=[prev_input, prev_prev_input, x_input], output=layer)
     model.compile(loss='mse', optimizer='adam')
     return model
 
@@ -228,9 +227,10 @@ def run_training_RL(data, objects, settings):
     encoder = objects['encoder']
     predictor = objects['predictor']
     rl_model = objects['rl_model']
-    epoch_size = int(len(objects['train_indexes'])/(10*settings['batch_size']))
+    epoch_size = int(len(objects['train_indexes'])/(100*settings['batch_size']))
 
-    for epoch in range(50):
+
+    for epoch in range(1):
         sys.stdout.write("\nEpoch {}\n".format(epoch))
         loss1_total = []
         acc_total = []
@@ -247,27 +247,27 @@ def run_training_RL(data, objects, settings):
             y_pred = predictor.predict(batch[0])
 
             output = y_pred[0]
-            prev_value = y_pred[1]
-            prev_prev_value = y_pred[2]
-            current_value = y_pred[3]
+            stack_current_value = y_pred[1]
+            stack_prev_value = y_pred[2]
+            input_current_value = y_pred[3]
             policy = y_pred[4]
             policy_calculated = y_pred[5]
 
-            error = np.log(np.sum(output*batch[1], axis=1))
-            X,Y = restore_exp(settings, error, prev_value, prev_prev_value, current_value, policy, policy_calculated)
+            error = np.sum(output*batch[1], axis=1)
+            X,Y = restore_exp(settings, error, stack_current_value, stack_prev_value, input_current_value, policy, policy_calculated)
             loss2 = rl_model.train_on_batch(X,Y)
 
 
 
-            encoder.layers[2].W_S1.set_value(K.get_value(rl_model.layers[2].W_S1))
-            encoder.layers[2].b_S1.set_value(K.get_value(rl_model.layers[2].b_S1))
-            encoder.layers[2].W_S2.set_value(K.get_value(rl_model.layers[2].W_S2))
-            encoder.layers[2].b_S2.set_value(K.get_value(rl_model.layers[2].b_S2))
+            encoder.layers[2].W_S1.set_value(K.get_value(rl_model.layers[3].W_S1))
+            encoder.layers[2].b_S1.set_value(K.get_value(rl_model.layers[3].b_S1))
+            encoder.layers[2].W_S2.set_value(K.get_value(rl_model.layers[3].W_S2))
+            encoder.layers[2].b_S2.set_value(K.get_value(rl_model.layers[3].b_S2))
 
-            predictor.layers[2].W_S1.set_value(K.get_value(rl_model.layers[2].W_S1))
-            predictor.layers[2].b_S1.set_value(K.get_value(rl_model.layers[2].b_S1))
-            predictor.layers[2].W_S2.set_value(K.get_value(rl_model.layers[2].W_S2))
-            predictor.layers[2].b_S2.set_value(K.get_value(rl_model.layers[2].b_S2))
+            predictor.layers[2].W_S1.set_value(K.get_value(rl_model.layers[3].W_S1))
+            predictor.layers[2].b_S1.set_value(K.get_value(rl_model.layers[3].b_S1))
+            predictor.layers[2].W_S2.set_value(K.get_value(rl_model.layers[3].W_S2))
+            predictor.layers[2].b_S2.set_value(K.get_value(rl_model.layers[3].b_S2))
 
 
             loss1_total.append(loss1[0])
@@ -280,40 +280,51 @@ def run_training_RL(data, objects, settings):
             if len(acc_total) > 20:
                 acc_total.pop(0)
 
+            sys.stdout.write("\r batch {} / {}: loss1 = {:.2f}, acc = {:.2f}, loss2 = {:.6f}"
+                             .format(i, epoch_size,
+                                     np.sum(loss1_total)/len(loss1_total),
+                                     np.sum(acc_total)/len(acc_total),
+                                     np.sum(loss2_total)/len(loss2_total)))
 
-            sys.stdout.write("\r batch {} / {}: loss1 = {:.2f}, acc = {:.2f}, loss2 = {:.6f}".format(i, epoch_size, np.sum(loss1_total)/20, np.sum(acc_total)/20, np.sum(loss2_total)/20))
 
 
-
-
-def restore_exp(settings, total_error, prev_value, prev_prev_value, current_value, policy, policy_calculated):
+def restore_exp(settings, total_error, stack_current_value, stack_prev_value, input_current_value, policy, policy_calculated):
     DELTA = 0.9
-    prev_value_input = []
-    prev_prev_value_input = []
-    current_value_input = []
-    policy_output = []
+
+    total_count = np.sum(policy_calculated, axis=1)
+    error_mult = np.cumsum(policy_calculated, axis=1)
+    error_mult = np.repeat(np.expand_dims(total_count, axis=1), policy_calculated.shape[1], axis=1) - error_mult
+    error_mult = np.repeat(np.expand_dims(total_error, axis=1), policy_calculated.shape[1], axis=1)*np.power(DELTA, error_mult)
+
+    chosen_action = np.less_equal(policy[:,:,0], policy[:,:,1])
+    shift_action_mask = np.ones_like(error_mult)*chosen_action
+    reduce_action_mask = np.ones_like(error_mult)*(1-chosen_action)
+
+    shift_action_policy = np.concatenate((np.expand_dims(shift_action_mask*error_mult, axis=2), np.expand_dims(policy[:,:,1], axis=2)), axis=2)
+    shift_action_policy = np.repeat(np.expand_dims(shift_action_mask, axis=2), 2, axis=2)*shift_action_policy
+
+    reduce_action_policy = np.concatenate((np.expand_dims(policy[:,:,0], axis=2), np.expand_dims(reduce_action_mask*error_mult, axis=2)), axis=2)
+    reduce_action_policy = np.repeat(np.expand_dims(reduce_action_mask, axis=2), 2, axis=2)*reduce_action_policy
+
+    new_policy = shift_action_policy + reduce_action_policy
+
+    decision_performed = np.where(policy_calculated == 1)
+    stack_current_value_input = stack_current_value[decision_performed]
+    stack_prev_value_input = stack_prev_value[decision_performed]
+    input_current_value_input = input_current_value[decision_performed]
+    policy_output = new_policy[decision_performed]
 
 
-    decision_performed = np.argwhere(policy_calculated == 1)
-    for idx in decision_performed:
-        pass
+    return [stack_current_value_input, stack_prev_value_input, input_current_value_input], policy_output
 
 
 
+def save(objects, filename):
+    objects['encoder'].save_weights("encoder_{}.h5".format(filename))
+    objects['predictor'].save_weights("predictor_{}.h5".format(filename))
+    objects['rl_model'].save_weights("rl_model_{}.h5".format(filename))
 
-
-
-    #X = [np.asarray(left_input), np.asarray(bottom_input), np.asarray(action_input)]
-    #Y = np.asarray(error_output)
-    pass
-
-
-
-
-
-
-
-def train(weights_filename):
+def train(filename):
     settings = init_settings()
     settings['with_sentences']=True
     data, settings = get_data(settings)
@@ -322,11 +333,14 @@ def train(weights_filename):
     sys.stdout.write('Compiling model\n')
     #run_training(data, objects)
     run_training_RL(data, objects, settings)
-    objects['model'].save_weights(weights_filename)
+    save(objects, filename)
+
+
+
 
 
 if __name__=="__main__":
-    train("weights.h5")
+    train("1")
 
 
 
