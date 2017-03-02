@@ -295,23 +295,23 @@ def run_training_RL(data, objects, settings):
             loss1 = encoder.train_on_batch(batch[0], batch[1])
             loss1_total.append(loss1[0])
             acc_total.append(loss1[1])
-            sys.stdout.write("\r Testing batch {} / {}: loss1 = {:.2f}, acc = {:.2f}, loss2 = {:.6f}"
+            sys.stdout.write("\r Testing batch {} / {}: loss1 = {:.2f}, acc = {:.2f}"
                              .format(i+1, val_epoch_size,
                                      np.sum(loss1_total)/len(loss1_total),
-                                     np.sum(acc_total)/len(acc_total),
-                                     np.sum(loss2_total)/len(loss2_total)))
+                                     np.sum(acc_total)/len(acc_total)))
 
 
 
 def restore_exp(settings, total_error, stack_current_value, stack_prev_value, input_current_value, policy, policy_calculated):
     DELTA = 0.9
 
-    total_count = np.sum(policy_calculated, axis=1)
-    error_mult = np.cumsum(policy_calculated, axis=1)
-    error_mult = np.repeat(np.expand_dims(total_count, axis=1), policy_calculated.shape[1], axis=1) - error_mult
-    error_mult = np.repeat(np.expand_dims(total_error, axis=1), policy_calculated.shape[1], axis=1)*np.power(DELTA, error_mult)
+    #total_count = np.sum(policy_calculated, axis=1)
+    #error_mult = np.cumsum(policy_calculated, axis=1)
+    #error_mult = np.repeat(np.expand_dims(total_count, axis=1), policy_calculated.shape[1], axis=1) - error_mult
+    error_mult = np.repeat(np.expand_dims(total_error, axis=1), policy_calculated.shape[1], axis=1)#*np.power(DELTA, error_mult)
 
-    chosen_action = np.less_equal(policy[:,:,0], policy[:,:,1])
+
+    chosen_action = np.greater_equal(policy[:,:,0], policy[:,:,1])
     shift_action_mask = np.ones_like(error_mult)*chosen_action
     reduce_action_mask = np.ones_like(error_mult)*(1-chosen_action)
 
@@ -344,7 +344,9 @@ def train(filename):
     settings['with_sentences']=True
     data, settings = get_data(settings)
     objects = prepare_objects_RL(data, settings)
-    #objects['model'].load_weights("rl.h5")
+    objects['encoder'].load_weights("encoder_{}.h5".format(filename))
+    objects['predictor'].load_weights("predictor_{}.h5".format(filename))
+    objects['rl_model'].load_weights("rl_model_{}.h5".format(filename))
     sys.stdout.write('Compiling model\n')
     #run_training(data, objects)
     run_training_RL(data, objects, settings)
