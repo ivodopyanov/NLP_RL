@@ -74,7 +74,7 @@ class Base(Layer):
                                  values['stack_prev'][:, self.hidden_dim:],
                                  values['input_current'][:, self.hidden_dim:]], axis=1)
         s = relu(K.dot(s_input, self.W_S1)+self.b_S1)
-        policy = K.exp(K.dot(s, self.W_S2)+self.b_S2)
+        policy = -K.exp(K.dot(s, self.W_S2)+self.b_S2)
         action = TS.switch(TS.ge(policy[:,0], policy[:,1]), 1, 0)
         return action, policy
 

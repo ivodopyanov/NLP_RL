@@ -18,6 +18,8 @@ import utils
 
 
 
+LR_START = 0.001
+LR_END = 0.0001
 
 CASES_FILENAME = "cases.txt"
 QUOTES = ["'", '“', '"']
@@ -64,8 +66,8 @@ def get_data(settings):
 
 def init_settings():
     settings = {}
-    settings['word_embedding_size'] = 32
-    settings['sentence_embedding_size'] = 64
+    settings['word_embedding_size'] = 128
+    settings['sentence_embedding_size'] = 128
     settings['RL_dim'] = 128
     settings['hidden_dims'] = [64]
     settings['dense_dropout'] = 0.5
@@ -73,7 +75,9 @@ def init_settings():
     settings['max_len'] = 64
     settings['max_features']=10000
     settings['bucket_size_step'] = 4
+    settings['random_action_prob'] = 0.2
     settings['with_sentences']=False
+    settings['epochs'] = 100
     return settings
 
 
@@ -115,6 +119,7 @@ def build_predictor(data, settings):
                         RL_dim=settings['RL_dim'],
                         max_len=settings['max_len'],
                         batch_size=settings['batch_size'],
+                        prob=settings['random_action_prob'],
                         name='encoder')([embedding, bucket_size])
     layer = encoder[0]
 
@@ -124,8 +129,6 @@ def build_predictor(data, settings):
         layer = Dropout(settings['dense_dropout'])(layer)
     output = Dense(settings['num_of_classes'], activation='softmax', name='output')(layer)
     model = Model(input=[data_input, bucket_size], output=[output, encoder[1], encoder[2], encoder[3], encoder[4], encoder[5]])
-    optimizer = Adam(lr=0.001, clipnorm=5)
-    #model.compile(loss="categorical_crossentropy", optimizer=optimizer, metrics=['accuracy'])
     return model
 
 
@@ -187,12 +190,6 @@ def build_batch(data, settings, sentence_batch):
         Y[i][data['labels'].index(sentence_tuple[1])] = True
     return X, Y
 
-def run_training(data, objects):
-    objects['model'].fit_generator(generator=objects['data_gen'], validation_data=objects['val_gen'], nb_val_samples=len(objects['val_indexes'])/10, samples_per_epoch=len(objects['train_indexes'])/10, nb_epoch=50, callbacks=[LearningRateScheduler(lr_scheduler)])
-
-def lr_scheduler(epoch):
-    z = epoch/50
-    return z*0.0001 + (1-z)*0.001
 
 
 
@@ -234,8 +231,12 @@ def run_training_RL(data, objects, settings):
     val_epoch_size = int(len(objects['val_indexes'])/(10*settings['batch_size']))
 
 
-    for epoch in range(50):
+    for epoch in range(settings['epochs']):
         sys.stdout.write("\nEpoch {}\n".format(epoch))
+        norm_epoch = epoch/settings['epochs']
+        lr_value = norm_epoch*LR_END + (1-norm_epoch)*LR_START
+        encoder.optimizer.lr.set_value(lr_value)
+        rl_model.optimizer.lr.set_value(lr_value)
         loss1_total = []
         acc_total = []
         loss2_total = []
@@ -262,7 +263,7 @@ def run_training_RL(data, objects, settings):
             policy = y_pred[4]
             policy_calculated = y_pred[5]
 
-            error = np.sum(output*batch[1], axis=1)
+            error = np.log(np.sum(output*batch[1], axis=1))
             X,Y = restore_exp(settings, error, stack_current_value, stack_prev_value, input_current_value, policy, policy_calculated)
             loss2 = rl_model.train_on_batch(X,Y)
 
@@ -306,6 +307,7 @@ def restore_exp(settings, total_error, stack_current_value, stack_prev_value, in
     DELTA = 0.9
 
     #total_count = np.sum(policy_calculated, axis=1)
+    #total_error = total_error / total_count
     #error_mult = np.cumsum(policy_calculated, axis=1)
     #error_mult = np.repeat(np.expand_dims(total_count, axis=1), policy_calculated.shape[1], axis=1) - error_mult
     error_mult = np.repeat(np.expand_dims(total_error, axis=1), policy_calculated.shape[1], axis=1)#*np.power(DELTA, error_mult)
@@ -344,9 +346,9 @@ def train(filename):
     settings['with_sentences']=True
     data, settings = get_data(settings)
     objects = prepare_objects_RL(data, settings)
-    objects['encoder'].load_weights("encoder_{}.h5".format(filename))
-    objects['predictor'].load_weights("predictor_{}.h5".format(filename))
-    objects['rl_model'].load_weights("rl_model_{}.h5".format(filename))
+    #objects['encoder'].load_weights("encoder_{}.h5".format(filename))
+    #objects['predictor'].load_weights("predictor_{}.h5".format(filename))
+    #objects['rl_model'].load_weights("rl_model_{}.h5".format(filename))
     sys.stdout.write('Compiling model\n')
     #run_training(data, objects)
     run_training_RL(data, objects, settings)

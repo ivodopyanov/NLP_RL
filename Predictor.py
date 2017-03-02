@@ -5,11 +5,13 @@ from keras.initializations import glorot_uniform
 
 import theano as T
 import theano.tensor as TS
+from theano.tensor.shared_randomstreams import RandomStreams
 from theano.printing import Print
 from Base import Base
 
 class Predictor(Base):
-    def __init__(self, **kwargs):
+    def __init__(self, prob, **kwargs):
+        self.prob = prob
         super(Predictor, self).__init__(**kwargs)
 
 
@@ -71,6 +73,12 @@ class Predictor(Base):
 
         reduced = self.calc_reduced_value(values)
         action, policy = self.calc_action(values)
+
+        '''rng = RandomStreams()
+        random_action_mask = rng.choice(size=(self.batch_size,), p=[1-self.prob, self.prob])
+        random_actions = rng.choice(size=(self.batch_size,))
+        action = action*(1-random_action_mask) + random_actions*random_action_mask'''
+
         action, no_action, policy_calculated = self.apply_border_conditions(cursors, stack_mask, mask, action)
         stack_reduce_result = self.calc_stack_after_reduce(stack, value_masks, reduced)
         stack_shift_result = self.calc_stack_after_shift(stack, value_masks, values)
