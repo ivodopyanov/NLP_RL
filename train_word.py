@@ -63,14 +63,14 @@ def get_data(settings):
 
 def init_settings():
     settings = {}
-    settings['word_embedding_size'] = 128
-    settings['sentence_embedding_size'] = 128
+    settings['word_embedding_size'] = 32
+    settings['sentence_embedding_size'] = 64
     settings['RL_dim'] = 128
     settings['hidden_dims'] = [64]
     settings['dense_dropout'] = 0.5
     settings['batch_size'] = 64
     settings['max_len'] = 64
-    settings['max_features']=15000
+    settings['max_features']=10000
     settings['with_sentences']=False
     return settings
 
@@ -225,7 +225,7 @@ def run_training_RL(data, objects, settings):
     epoch_size = int(len(objects['train_indexes'])/(10*settings['batch_size']))
 
 
-    for epoch in range(1):
+    for epoch in range(50):
         sys.stdout.write("\nEpoch {}\n".format(epoch))
         loss1_total = []
         acc_total = []
@@ -273,13 +273,6 @@ def run_training_RL(data, objects, settings):
             loss1_total.append(loss1[0])
             loss2_total.append(loss2)
             acc_total.append(loss1[1])
-            if len(loss1_total) > 20:
-                loss1_total.pop(0)
-            if len(loss2_total) > 20:
-                loss2_total.pop(0)
-            if len(acc_total) > 20:
-                acc_total.pop(0)
-
             sys.stdout.write("\r batch {} / {}: loss1 = {:.2f}, acc = {:.2f}, loss2 = {:.6f}"
                              .format(i, epoch_size,
                                      np.sum(loss1_total)/len(loss1_total),
