@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import sys
+from math import ceil
 
 
 from keras.models import Model
@@ -71,6 +72,7 @@ def init_settings():
     settings['batch_size'] = 64
     settings['max_len'] = 64
     settings['max_features']=10000
+    settings['bucket_size_step'] = 4
     settings['with_sentences']=False
     return settings
 
@@ -79,23 +81,24 @@ def init_settings():
 def build_encoder(data, settings):
     sys.stdout.write('Building model\n')
     data_input = Input(shape=(settings['max_len'],))
+    bucket_size = Input(shape=(1,), dtype="int8")
     embedding = Embedding(input_dim=settings['max_features']+3,
                           output_dim=settings['word_embedding_size'],
-                          mask_zero=True)(data_input)
+                          mask_zero=True, name="emb")(data_input)
     encoder = Encoder(input_dim=settings['word_embedding_size'],
                       hidden_dim=settings['sentence_embedding_size'],
                       RL_dim=settings['RL_dim'],
                       max_len=settings['max_len'],
                       batch_size=settings['batch_size'],
-                      name='encoder')(embedding)
+                      name='encoder')([embedding, bucket_size])
     layer = encoder
 
-    for hidden_dim in settings['hidden_dims']:
-        layer = Dense(hidden_dim)(layer)
+    for idx, hidden_dim in enumerate(settings['hidden_dims']):
+        layer = Dense(hidden_dim, name="dense_{}".format(idx))(layer)
         layer = Activation('tanh')(layer)
         layer = Dropout(settings['dense_dropout'])(layer)
     output = Dense(settings['num_of_classes'], activation='softmax', name='output')(layer)
-    model = Model(input=data_input, output=output)
+    model = Model(input=[data_input, bucket_size], output=output)
     optimizer = Adam(lr=0.001, clipnorm=5)
     model.compile(loss="categorical_crossentropy", optimizer=optimizer, metrics=['accuracy'])
     return model
@@ -103,23 +106,24 @@ def build_encoder(data, settings):
 def build_predictor(data, settings):
     sys.stdout.write('Building model\n')
     data_input = Input(shape=(settings['max_len'],))
+    bucket_size = Input(shape=(1,), dtype="int8")
     embedding = Embedding(input_dim=settings['max_features']+3,
                           output_dim=settings['word_embedding_size'],
-                          mask_zero=True)(data_input)
+                          mask_zero=True, name="emb")(data_input)
     encoder = Predictor(input_dim=settings['word_embedding_size'],
                         hidden_dim=settings['sentence_embedding_size'],
                         RL_dim=settings['RL_dim'],
                         max_len=settings['max_len'],
                         batch_size=settings['batch_size'],
-                        name='encoder')(embedding)
+                        name='encoder')([embedding, bucket_size])
     layer = encoder[0]
 
-    for hidden_dim in settings['hidden_dims']:
-        layer = Dense(hidden_dim)(layer)
+    for idx, hidden_dim in enumerate(settings['hidden_dims']):
+        layer = Dense(hidden_dim, name="dense_{}".format(idx))(layer)
         layer = Activation('tanh')(layer)
         layer = Dropout(settings['dense_dropout'])(layer)
     output = Dense(settings['num_of_classes'], activation='softmax', name='output')(layer)
-    model = Model(input=data_input, output=[output, encoder[1], encoder[2], encoder[3], encoder[4], encoder[5]])
+    model = Model(input=[data_input, bucket_size], output=[output, encoder[1], encoder[2], encoder[3], encoder[4], encoder[5]])
     optimizer = Adam(lr=0.001, clipnorm=5)
     #model.compile(loss="categorical_crossentropy", optimizer=optimizer, metrics=['accuracy'])
     return model
@@ -131,7 +135,7 @@ def build_RL_model(settings):
     prev_prev_input = Input(shape=(settings['sentence_embedding_size'],))
     x_input = Input(shape=(settings['sentence_embedding_size'],))
     layer = RL_layer(hidden_dim=settings['sentence_embedding_size'],
-                     RL_dim=settings['RL_dim'])([prev_input, prev_prev_input, x_input])
+                     RL_dim=settings['RL_dim'], name="encoder")([prev_input, prev_prev_input, x_input])
     model = Model(input=[prev_input, prev_prev_input, x_input], output=layer)
     model.compile(loss='mse', optimizer='adam')
     return model
@@ -142,7 +146,7 @@ def build_generator_HRNN(data, settings, indexes):
     def generator():
         walk_order = list(indexes)
         np.random.shuffle(walk_order)
-        batch = []
+        buckets = {}
         while True:
             idx = walk_order.pop()-1
             row = data['sentences'][idx]
@@ -153,17 +157,21 @@ def build_generator_HRNN(data, settings, indexes):
                 np.random.shuffle(walk_order)
             if len(sentence) > settings['max_len']:
                 continue
+            bucket_size = ceil((len(sentence)+1) / settings['bucket_size_step'])*settings['bucket_size_step']
+            if bucket_size not in buckets:
+                buckets[bucket_size] = []
+            buckets[bucket_size].append((sentence, label))
+            if len(buckets[bucket_size])==settings['batch_size']:
+                X, Y = build_batch(data, settings, buckets[bucket_size])
+                batch_sentences = buckets[bucket_size]
+                buckets[bucket_size] = []
 
-            batch.append((sentence, label))
-            if len(batch)==settings['batch_size']:
-                X, Y = build_batch(data, settings, batch)
-                batch_sentences = batch
-                batch = []
-
+                bucket_size_input = np.zeros((settings['batch_size'],1), dtype=int)
+                bucket_size_input[0][0]=bucket_size
                 if settings['with_sentences']:
-                    yield X, Y, batch_sentences
+                    yield [X, bucket_size_input], Y, batch_sentences
                 else:
-                    yield X, Y
+                    yield [X, bucket_size_input], Y
     return generator()
 
 def build_batch(data, settings, sentence_batch):
@@ -222,7 +230,8 @@ def run_training_RL(data, objects, settings):
     encoder = objects['encoder']
     predictor = objects['predictor']
     rl_model = objects['rl_model']
-    epoch_size = int(len(objects['train_indexes'])/(10*settings['batch_size']))
+    train_epoch_size = int(len(objects['train_indexes'])/(10*settings['batch_size']))
+    val_epoch_size = int(len(objects['val_indexes'])/(10*settings['batch_size']))
 
 
     for epoch in range(50):
@@ -230,19 +239,19 @@ def run_training_RL(data, objects, settings):
         loss1_total = []
         acc_total = []
         loss2_total = []
-        for i in range(epoch_size):
+        for i in range(train_epoch_size):
             batch = next(objects['data_gen'])
             loss1 = encoder.train_on_batch(batch[0], batch[1])
 
-            predictor.layers[1].W.set_value(K.get_value(encoder.layers[1].W))
-            predictor.layers[2].W_emb.set_value(K.get_value(encoder.layers[2].W_emb))
-            predictor.layers[2].b_emb.set_value(K.get_value(encoder.layers[2].b_emb))
-            predictor.layers[2].W_R.set_value(K.get_value(encoder.layers[2].W_R))
-            predictor.layers[2].b_R.set_value(K.get_value(encoder.layers[2].b_R))
-            predictor.layers[3].W.set_value(K.get_value(encoder.layers[3].W))
-            predictor.layers[3].b.set_value(K.get_value(encoder.layers[3].b))
-            predictor.layers[6].W.set_value(K.get_value(encoder.layers[6].W))
-            predictor.layers[6].b.set_value(K.get_value(encoder.layers[6].b))
+            predictor.get_layer("emb").W.set_value(K.get_value(encoder.get_layer("emb").W))
+            predictor.get_layer("encoder").W_emb.set_value(K.get_value(encoder.get_layer("encoder").W_emb))
+            predictor.get_layer("encoder").b_emb.set_value(K.get_value(encoder.get_layer("encoder").b_emb))
+            predictor.get_layer("encoder").W_R.set_value(K.get_value(encoder.get_layer("encoder").W_R))
+            predictor.get_layer("encoder").b_R.set_value(K.get_value(encoder.get_layer("encoder").b_R))
+            predictor.get_layer("dense_0").W.set_value(K.get_value(encoder.get_layer("dense_0").W))
+            predictor.get_layer("dense_0").b.set_value(K.get_value(encoder.get_layer("dense_0").b))
+            predictor.get_layer("output").W.set_value(K.get_value(encoder.get_layer("output").W))
+            predictor.get_layer("output").b.set_value(K.get_value(encoder.get_layer("output").b))
 
             y_pred = predictor.predict_on_batch(batch[0])
 
@@ -258,23 +267,36 @@ def run_training_RL(data, objects, settings):
             loss2 = rl_model.train_on_batch(X,Y)
 
 
+            encoder.get_layer("encoder").W_S1.set_value(K.get_value(rl_model.get_layer("encoder").W_S1))
+            encoder.get_layer("encoder").b_S1.set_value(K.get_value(rl_model.get_layer("encoder").b_S1))
+            encoder.get_layer("encoder").W_S2.set_value(K.get_value(rl_model.get_layer("encoder").W_S2))
+            encoder.get_layer("encoder").b_S2.set_value(K.get_value(rl_model.get_layer("encoder").b_S2))
 
-            encoder.layers[2].W_S1.set_value(K.get_value(rl_model.layers[3].W_S1))
-            encoder.layers[2].b_S1.set_value(K.get_value(rl_model.layers[3].b_S1))
-            encoder.layers[2].W_S2.set_value(K.get_value(rl_model.layers[3].W_S2))
-            encoder.layers[2].b_S2.set_value(K.get_value(rl_model.layers[3].b_S2))
-
-            predictor.layers[2].W_S1.set_value(K.get_value(rl_model.layers[3].W_S1))
-            predictor.layers[2].b_S1.set_value(K.get_value(rl_model.layers[3].b_S1))
-            predictor.layers[2].W_S2.set_value(K.get_value(rl_model.layers[3].W_S2))
-            predictor.layers[2].b_S2.set_value(K.get_value(rl_model.layers[3].b_S2))
+            predictor.get_layer("encoder").W_S1.set_value(K.get_value(rl_model.get_layer("encoder").W_S1))
+            predictor.get_layer("encoder").b_S1.set_value(K.get_value(rl_model.get_layer("encoder").b_S1))
+            predictor.get_layer("encoder").W_S2.set_value(K.get_value(rl_model.get_layer("encoder").W_S2))
+            predictor.get_layer("encoder").b_S2.set_value(K.get_value(rl_model.get_layer("encoder").b_S2))
 
 
             loss1_total.append(loss1[0])
             loss2_total.append(loss2)
             acc_total.append(loss1[1])
-            sys.stdout.write("\r batch {} / {}: loss1 = {:.2f}, acc = {:.2f}, loss2 = {:.6f}"
-                             .format(i, epoch_size,
+            sys.stdout.write("\r Training batch {} / {}: loss1 = {:.2f}, acc = {:.2f}, loss2 = {:.6f}"
+                             .format(i+1, train_epoch_size,
+                                     np.sum(loss1_total)/len(loss1_total),
+                                     np.sum(acc_total)/len(acc_total),
+                                     np.sum(loss2_total)/len(loss2_total)))
+
+        sys.stdout.write("\n")
+        loss1_total = []
+        acc_total = []
+        for i in range(val_epoch_size):
+            batch = next(objects['val_gen'])
+            loss1 = encoder.train_on_batch(batch[0], batch[1])
+            loss1_total.append(loss1[0])
+            acc_total.append(loss1[1])
+            sys.stdout.write("\r Testing batch {} / {}: loss1 = {:.2f}, acc = {:.2f}, loss2 = {:.6f}"
+                             .format(i+1, val_epoch_size,
                                      np.sum(loss1_total)/len(loss1_total),
                                      np.sum(acc_total)/len(acc_total),
                                      np.sum(loss2_total)/len(loss2_total)))

@@ -25,7 +25,9 @@ class Encoder(Base):
 
 
     def call(self, input, mask=None):
-        input = K.dot(input, self.W_emb) + self.b_emb
+        x = K.dot(input[0], self.W_emb) + self.b_emb
+        bucket_size = input[1][0][0]
+
 
         stack = K.zeros((self.batch_size, self.max_len, 2*self.hidden_dim))
         cursors = K.concatenate([K.ones((self.batch_size, 1)), K.zeros((self.batch_size, self.max_len-1))], axis=1)
@@ -34,8 +36,8 @@ class Encoder(Base):
 
         results, _ = T.scan(self.encoder_step,
                             outputs_info=[stack, cursors, stack_mask],
-                            non_sequences=[input, mask],
-                            n_steps=2*self.max_len)
+                            non_sequences=[x, mask[0]],
+                            n_steps=2*bucket_size)
         return results[0][-1,:,0,self.hidden_dim:]
 
 

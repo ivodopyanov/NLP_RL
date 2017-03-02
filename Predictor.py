@@ -29,7 +29,8 @@ class Predictor(Base):
 
 
     def call(self, input, mask=None):
-        input = K.dot(input, self.W_emb) + self.b_emb
+        x = K.dot(input[0], self.W_emb) + self.b_emb
+        bucket_size = input[1][0][0]
 
         stack = K.zeros((self.batch_size, self.max_len, 2*self.hidden_dim))
         cursors = K.concatenate([K.ones((self.batch_size, 1)), K.zeros((self.batch_size, self.max_len-1))], axis=1)
@@ -45,8 +46,8 @@ class Predictor(Base):
         results, _ = T.scan(self.predictor_step,
                             outputs_info=[stack, cursors, stack_mask,
                                           initial_stack_current_value, initial_stack_prev_value, initial_input_current_value, initial_policy, initial_policy_calculated],
-                            non_sequences=[input, mask],
-                            n_steps=2*self.max_len)
+                            non_sequences=[x, mask[0]],
+                            n_steps=2*bucket_size)
         stack_current_values = results[3]
         stack_prev_values = results[4]
         input_current_values = results[5]
