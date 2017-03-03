@@ -49,6 +49,8 @@ def get_data(settings):
     labels_list.sort()
     sys.stdout.write("\n")
 
+    from collections import Counter
+    cnt = Counter([len(l['sentence']) for l in result])
     char_corpus_encode, char_corpus_decode, char_count = utils.load_char_corpus(1e-5)
     settings['num_of_classes'] = len(labels_list)
     data = {'labels': labels_list,

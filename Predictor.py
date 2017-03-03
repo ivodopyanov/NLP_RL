@@ -17,6 +17,15 @@ class Predictor(Base):
 
     def build(self, input_shape):
         super(Predictor, self).build(input_shape)
+        self.stack = K.zeros((self.batch_size, self.max_len, 2*self.hidden_dim))
+        self.cursors = K.concatenate([K.ones((self.batch_size, 1)), K.zeros((self.batch_size, self.max_len-1))], axis=1)
+        self.stack_mask = K.zeros((self.batch_size, self.max_len))
+
+        self.initial_stack_current_value = K.zeros((self.batch_size, self.hidden_dim))
+        self.initial_stack_prev_value = K.zeros((self.batch_size, self.hidden_dim))
+        self.initial_input_current_value = K.zeros((self.batch_size, self.hidden_dim))
+        self.initial_policy = K.zeros((self.batch_size, 2))
+        self.initial_policy_calculated = K.zeros((self.batch_size,), dtype='int16')
 
     def compute_mask(self, input, input_mask=None):
         return [None, None, None, None, None, None]
@@ -34,20 +43,16 @@ class Predictor(Base):
         x = K.dot(input[0], self.W_emb) + self.b_emb
         bucket_size = input[1][0][0]
 
-        stack = K.zeros((self.batch_size, self.max_len, 2*self.hidden_dim))
-        cursors = K.concatenate([K.ones((self.batch_size, 1)), K.zeros((self.batch_size, self.max_len-1))], axis=1)
-        stack_mask = K.zeros((self.batch_size, self.max_len))
 
-        initial_stack_current_value = K.zeros((self.batch_size, self.hidden_dim))
-        initial_stack_prev_value = K.zeros((self.batch_size, self.hidden_dim))
-        initial_input_current_value = K.zeros((self.batch_size, self.hidden_dim))
-        initial_policy = K.zeros((self.batch_size, 2))
-        initial_policy_calculated = K.zeros((self.batch_size,), dtype='int16')
 
 
         results, _ = T.scan(self.predictor_step,
-                            outputs_info=[stack, cursors, stack_mask,
-                                          initial_stack_current_value, initial_stack_prev_value, initial_input_current_value, initial_policy, initial_policy_calculated],
+                            outputs_info=[self.stack, self.cursors, self.stack_mask,
+                                          self.initial_stack_current_value,
+                                          self.initial_stack_prev_value,
+                                          self.initial_input_current_value,
+                                          self.initial_policy,
+                                          self.initial_policy_calculated],
                             non_sequences=[x, mask[0]],
                             n_steps=2*bucket_size)
         last_value = results[0][2*bucket_size-1]
