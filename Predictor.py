@@ -44,7 +44,7 @@ class Predictor(Base):
         initial_stack_prev_value = K.zeros((self.batch_size, self.hidden_dim))
         initial_input_current_value = K.zeros((self.batch_size, self.hidden_dim))
         initial_policy = K.zeros((self.batch_size, 2))
-        initial_policy_calculated = K.zeros((self.batch_size,), dtype='int16')
+        initial_policy_calculated = K.zeros((self.batch_size,), dtype="int16")
 
 
         results, _ = T.scan(self.predictor_step,

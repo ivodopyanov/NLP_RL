@@ -102,7 +102,7 @@ def prepare_objects_RL(data, settings):
 def build_encoder(data, settings):
     sys.stdout.write('Building model\n')
     data_input = Input(shape=(settings['max_len'],data['char_count']))
-    bucket_size = Input(shape=(1,), dtype="int8")
+    bucket_size = Input(shape=(1,), dtype="int16")
     masking = Masking()(data_input)
     encoder = Encoder(input_dim=data['char_count'],
                       hidden_dim=settings['sentence_embedding_size'],
@@ -125,7 +125,7 @@ def build_encoder(data, settings):
 def build_predictor(data, settings):
     sys.stdout.write('Building model\n')
     data_input = Input(shape=(settings['max_len'],data['char_count']))
-    bucket_size = Input(shape=(1,), dtype="int8")
+    bucket_size = Input(shape=(1,), dtype="int16")
     masking = Masking()(data_input)
     encoder = Predictor(input_dim=data['char_count'],
                         hidden_dim=settings['sentence_embedding_size'],
@@ -180,7 +180,7 @@ def build_generator_HRNN(data, settings, indexes):
                 batch_sentences = buckets[bucket_size]
                 buckets[bucket_size] = []
 
-                bucket_size_input = np.zeros((settings['batch_size'],1), dtype=int)
+                bucket_size_input = np.zeros((settings['batch_size'],1), dtype="int16")
                 bucket_size_input[0][0]=bucket_size
                 yield [X, bucket_size_input], Y
             if len(walk_order) == 0:
