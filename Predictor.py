@@ -21,11 +21,7 @@ class Predictor(Base):
         self.cursors = K.concatenate([K.ones((self.batch_size, 1)), K.zeros((self.batch_size, self.max_len-1))], axis=1)
         self.stack_mask = K.zeros((self.batch_size, self.max_len))
 
-        self.initial_stack_current_value = K.zeros((self.batch_size, self.hidden_dim))
-        self.initial_stack_prev_value = K.zeros((self.batch_size, self.hidden_dim))
-        self.initial_input_current_value = K.zeros((self.batch_size, self.hidden_dim))
-        self.initial_policy = K.zeros((self.batch_size, 2))
-        self.initial_policy_calculated = K.zeros((self.batch_size,), dtype='int16')
+
 
     def compute_mask(self, input, input_mask=None):
         return [None, None, None, None, None, None]
@@ -44,15 +40,20 @@ class Predictor(Base):
         bucket_size = input[1][0][0]
 
 
+        initial_stack_current_value = K.zeros((self.batch_size, self.hidden_dim))
+        initial_stack_prev_value = K.zeros((self.batch_size, self.hidden_dim))
+        initial_input_current_value = K.zeros((self.batch_size, self.hidden_dim))
+        initial_policy = K.zeros((self.batch_size, 2))
+        initial_policy_calculated = K.zeros((self.batch_size,), dtype='int16')
 
 
         results, _ = T.scan(self.predictor_step,
                             outputs_info=[self.stack, self.cursors, self.stack_mask,
-                                          self.initial_stack_current_value,
-                                          self.initial_stack_prev_value,
-                                          self.initial_input_current_value,
-                                          self.initial_policy,
-                                          self.initial_policy_calculated],
+                                          initial_stack_current_value,
+                                          initial_stack_prev_value,
+                                          initial_input_current_value,
+                                          initial_policy,
+                                          initial_policy_calculated],
                             non_sequences=[x, mask[0]],
                             n_steps=2*bucket_size)
         last_value = results[0][-1]
