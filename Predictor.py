@@ -55,7 +55,7 @@ class Predictor(Base):
                                           self.initial_policy_calculated],
                             non_sequences=[x, mask[0]],
                             n_steps=2*bucket_size)
-        last_value = results[0][2*bucket_size-1]
+        last_value = results[0][-1]
         stack_current_values = results[3]
         stack_prev_values = results[4]
         input_current_values = results[5]

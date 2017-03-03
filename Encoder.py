@@ -17,9 +17,7 @@ class Encoder(Base):
         super(Encoder, self).build(input_shape)
         self.trainable_weights = [self.W_emb, self.b_emb, self.W_R, self.b_R]
 
-        self.stack = K.zeros((self.batch_size, self.max_len, 2*self.hidden_dim))
-        self.cursors = K.concatenate([K.ones((self.batch_size, 1)), K.zeros((self.batch_size, self.max_len-1))], axis=1)
-        self.stack_mask = K.zeros((self.batch_size, self.max_len))
+
 
     def compute_mask(self, input, input_mask=None):
         return None
@@ -32,11 +30,15 @@ class Encoder(Base):
         x = K.dot(input[0], self.W_emb) + self.b_emb
         bucket_size = input[1][0][0]
 
+        stack = K.zeros((self.batch_size, self.max_len, 2*self.hidden_dim))
+        cursors = K.concatenate([K.ones((self.batch_size, 1)), K.zeros((self.batch_size, self.max_len-1))], axis=1)
+        stack_mask = K.zeros((self.batch_size, self.max_len))
+
         results, _ = T.scan(self.encoder_step,
-                            outputs_info=[self.stack, self.cursors, self.stack_mask],
+                            outputs_info=[stack, cursors, stack_mask],
                             non_sequences=[x, mask[0]],
                             n_steps=2*bucket_size)
-        last_value = results[0][2*bucket_size-1]
+        last_value = results[0][-1]
         return last_value[:,0,self.hidden_dim:]
 
 
