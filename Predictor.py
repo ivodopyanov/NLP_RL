@@ -50,6 +50,7 @@ class Predictor(Base):
                                           initial_stack_current_value, initial_stack_prev_value, initial_input_current_value, initial_policy, initial_policy_calculated],
                             non_sequences=[x, mask[0]],
                             n_steps=2*bucket_size)
+        last_value = results[0][2*bucket_size-1]
         stack_current_values = results[3]
         stack_prev_values = results[4]
         input_current_values = results[5]
@@ -62,7 +63,7 @@ class Predictor(Base):
         policy_values = policy_values.dimshuffle([1,0,2])
         policy_calculated = policy_calculated.dimshuffle([1,0])
 
-        return [results[0][-1,:,0,self.hidden_dim:], stack_current_values, stack_prev_values, input_current_values, policy_values, policy_calculated]
+        return [last_value[:,0,self.hidden_dim:], stack_current_values, stack_prev_values, input_current_values, policy_values, policy_calculated]
 
 
     #1 = SHIFT

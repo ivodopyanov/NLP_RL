@@ -65,7 +65,7 @@ def init_settings():
     settings['RL_dim'] = 128
     settings['hidden_dims'] = [64]
     settings['dense_dropout'] = 0.5
-    settings['batch_size'] = 64
+    settings['batch_size'] = 4
     settings['max_len'] = 128
     settings['bucket_size_step'] = 8
     settings['random_action_prob'] = 0.2

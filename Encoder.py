@@ -38,7 +38,8 @@ class Encoder(Base):
                             outputs_info=[stack, cursors, stack_mask],
                             non_sequences=[x, mask[0]],
                             n_steps=2*bucket_size)
-        return results[0][-1,:,0,self.hidden_dim:]
+        last_value = results[0][2*bucket_size-1]
+        return last_value[:,0,self.hidden_dim:]
 
 
 
