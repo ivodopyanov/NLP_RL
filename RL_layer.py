@@ -37,5 +37,5 @@ class RL_layer(Layer):
 
         s_input = K.concatenate([prev_values, prev_prev_values, current_values], axis=1)
         s = relu(K.dot(s_input, self.W_S1)+self.b_S1)
-        policy = K.exp(K.dot(s, self.W_S2)+self.b_S2)
+        policy = -K.exp(K.dot(s, self.W_S2)+self.b_S2)
         return policy
