@@ -68,7 +68,7 @@ def init_settings():
     settings = {}
     settings['word_embedding_size'] = 128
     settings['sentence_embedding_size'] = 128
-    settings['RL_dim'] = 128
+    settings['RL_dim'] = 256
     settings['hidden_dims'] = [64]
     settings['dense_dropout'] = 0.5
     settings['batch_size'] = 64
@@ -263,7 +263,7 @@ def run_training_RL(data, objects, settings):
             policy = y_pred[4]
             policy_calculated = y_pred[5]
 
-            error = np.log(np.sum(output*batch[1], axis=1))
+            error = -np.log(np.sum(output*batch[1], axis=1))
             X,Y = restore_exp(settings, error, stack_current_value, stack_prev_value, input_current_value, policy, policy_calculated)
             loss2 = rl_model.train_on_batch(X,Y)
 
@@ -282,7 +282,7 @@ def run_training_RL(data, objects, settings):
             loss1_total.append(loss1[0])
             loss2_total.append(loss2)
             acc_total.append(loss1[1])
-            sys.stdout.write("\r Training batch {} / {}: loss1 = {:.2f}, acc = {:.2f}, loss2 = {:.6f}"
+            sys.stdout.write("\r Training batch {} / {}: loss1 = {:.4f}, acc = {:.4f}, loss2 = {:.6f}"
                              .format(i+1, train_epoch_size,
                                      np.sum(loss1_total)/len(loss1_total),
                                      np.sum(acc_total)/len(acc_total),
@@ -293,10 +293,10 @@ def run_training_RL(data, objects, settings):
         acc_total = []
         for i in range(val_epoch_size):
             batch = next(objects['val_gen'])
-            loss1 = encoder.train_on_batch(batch[0], batch[1])
+            loss1 = encoder.evaluate(batch[0], batch[1], batch_size=settings['batch_size'], verbose=0)
             loss1_total.append(loss1[0])
             acc_total.append(loss1[1])
-            sys.stdout.write("\r Testing batch {} / {}: loss1 = {:.2f}, acc = {:.2f}"
+            sys.stdout.write("\r Testing batch {} / {}: loss1 = {:.4f}, acc = {:.4f}"
                              .format(i+1, val_epoch_size,
                                      np.sum(loss1_total)/len(loss1_total),
                                      np.sum(acc_total)/len(acc_total)))
@@ -313,7 +313,7 @@ def restore_exp(settings, total_error, stack_current_value, stack_prev_value, in
     error_mult = np.repeat(np.expand_dims(total_error, axis=1), policy_calculated.shape[1], axis=1)#*np.power(DELTA, error_mult)
 
 
-    chosen_action = np.greater_equal(policy[:,:,0], policy[:,:,1])
+    chosen_action = np.less_equal(policy[:,:,0], policy[:,:,1])
     shift_action_mask = np.ones_like(error_mult)*chosen_action
     reduce_action_mask = np.ones_like(error_mult)*(1-chosen_action)
 
