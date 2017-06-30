@@ -1,7 +1,8 @@
+# -*- coding: utf-8 -*-
 import keras.backend as K
 from keras.engine import Layer
 from keras.activations import sigmoid, tanh, relu
-from keras.initializations import glorot_uniform
+from keras.initializers import glorot_uniform, zeros
 
 import theano as T
 import theano.tensor as TS
@@ -18,16 +19,32 @@ class Base(Layer):
 
 
     def build(self, input_shape):
-        self.W_emb = glorot_uniform((self.input_dim, 2*self.hidden_dim), name='{}_W_emb'.format(self.name))
-        self.b_emb = K.zeros((2*self.hidden_dim,), name='{}_b_emb'.format(self.name))
+        self.W_emb = self.add_weight(name="W_emb",
+                                     shape=(self.input_dim, 2*self.hidden_dim),
+                                     initializer=glorot_uniform())
+        self.b_emb = self.add_weight(name="b_emb",
+                                     shape=(2*self.hidden_dim,),
+                                     initializer=zeros())
 
-        self.W_R = glorot_uniform((2*self.hidden_dim, 5*self.hidden_dim), name='{}_W_R'.format(self.name))
-        self.b_R = K.zeros((5*self.hidden_dim,), name='{}_b_R'.format(self.name))
+        self.W_R = self.add_weight(name="W_R",
+                                   shape=(2*self.hidden_dim, 5*self.hidden_dim),
+                                   initializer=glorot_uniform())
+        self.b_R = self.add_weight(name="b_R",
+                                   shape=(5*self.hidden_dim,),
+                                   initializer=zeros())
 
-        self.W_S1 = glorot_uniform((3*self.hidden_dim, self.RL_dim), name='{}_W_S1'.format(self.name))
-        self.b_S1 = K.zeros((self.RL_dim,), name='{}_b_S1'.format(self.name))
-        self.W_S2 = glorot_uniform((self.RL_dim,2), name='{}_W_S2'.format(self.name))
-        self.b_S2 = K.zeros((2,), name='{}_b_S2'.format(self.name))
+        self.W_S1 = self.add_weight(name="W_S1",
+                                    shape=(3*self.hidden_dim, self.RL_dim),
+                                    initializer=glorot_uniform())
+        self.b_S1 = self.add_weight(name="b_S1",
+                                    shape=(self.RL_dim,),
+                                    initializer=zeros())
+        self.W_S2 = self.add_weight(name="W_S2",
+                                    shape=(self.RL_dim,2),
+                                    initializer=glorot_uniform())
+        self.b_S2 = self.add_weight(name="b_S2",
+                                    shape=(2,),
+                                    initializer=zeros())
 
         self.built = True
 

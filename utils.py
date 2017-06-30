@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 import sys
 import os
 from collections import Counter
+from io import open
 
 from nltk.tokenize import word_tokenize
 
@@ -13,8 +15,8 @@ CHAR_COUNTS_FILENAME = "char_counts.txt"
 WORD_CORPUS_FILENAME = "words.txt"
 WORD_COUNTS_FILENAME = "word_counts.txt"
 INDEXES_FILENAME = "indexes.txt"
-EOS_WORD = "!@#EOS#@!"
-QUOTES = ["'", '“', '"']
+EOS_WORD = u"!@#EOS#@!"
+QUOTES = [u"'", u'“', u'"']
 
 
 def load_char_corpus(freq_limit):
@@ -22,7 +24,7 @@ def load_char_corpus(freq_limit):
         return {}, list(), 0
     with open(CHAR_CORPUS_FILENAME, "rt", encoding="utf8") as f:
         all_chars = f.read()
-    with open(CHAR_COUNTS_FILENAME, "rt") as f:
+    with open(CHAR_COUNTS_FILENAME, "rt", encoding="utf8") as f:
         char_counts = f.readlines()
     char_counts = [int(s.strip()) for s in char_counts]
     total_char_count = sum(char_counts)
@@ -40,7 +42,7 @@ def load_char_corpus(freq_limit):
 def load_word_corpus(max_features):
     with open(WORD_CORPUS_FILENAME, "rt", encoding="utf8") as f:
         all_words = f.read().split("\n")[:-1]
-    with open(WORD_COUNTS_FILENAME, "rt") as f:
+    with open(WORD_COUNTS_FILENAME, "rt", encoding="utf8") as f:
         word_counts = f.readlines()
     word_counts = [int(s.strip()) for s in word_counts]
     cnt = Counter(dict(zip(all_words, word_counts)))
@@ -58,7 +60,7 @@ def split_sentence_to_words(sentence):
     return words
 
 def sentence_cleaning(sentence):
-    sentence = sentence.replace("\n", " ")
+    sentence = sentence.replace(u"\n", u" ")
     sentence = sentence.lower()
     return sentence
 

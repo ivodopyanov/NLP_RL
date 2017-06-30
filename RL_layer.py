@@ -1,7 +1,7 @@
 import keras.backend as K
 from keras.engine import Layer
 from keras.activations import sigmoid, tanh, relu
-from keras.initializations import glorot_uniform
+from keras.initializers import glorot_uniform, zeros
 
 import theano as T
 import theano.tensor as TS
@@ -14,10 +14,18 @@ class RL_layer(Layer):
 
 
     def build(self, input_shape):
-        self.W_S1 = glorot_uniform((3*self.hidden_dim, self.RL_dim), name='{}_W_S1'.format(self.name))
-        self.b_S1 = K.zeros((self.RL_dim,), name='{}_b_S1'.format(self.name))
-        self.W_S2 = glorot_uniform((self.RL_dim,2), name='{}_W_S2'.format(self.name))
-        self.b_S2 = K.zeros((2,), name='{}_b_S2'.format(self.name))
+        self.W_S1 = self.add_weight(name="W_S1",
+                                    shape=(3*self.hidden_dim, self.RL_dim),
+                                    initializer=glorot_uniform())
+        self.b_S1 = self.add_weight(name="b_S1",
+                                    shape=(self.RL_dim,),
+                                    initializer=zeros())
+        self.W_S2 = self.add_weight(name="W_S2",
+                                    shape=(self.RL_dim,2),
+                                    initializer=glorot_uniform())
+        self.b_S2 = self.add_weight(name="b_S2",
+                                    shape=(2,),
+                                    initializer=zeros())
 
         self.trainable_weights = [self.W_S1, self.b_S1, self.W_S2, self.b_S2]
         self.built = True
@@ -25,7 +33,7 @@ class RL_layer(Layer):
     def compute_mask(self, input, input_mask=None):
         return None
 
-    def get_output_shape_for(self, input_shape):
+    def compute_output_shape(self, input_shape):
         return (input_shape[0][0], 2)
 
 

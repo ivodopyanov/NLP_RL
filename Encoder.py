@@ -1,7 +1,5 @@
+# -*- coding: utf-8 -*-
 import keras.backend as K
-from keras.engine import Layer
-from keras.activations import sigmoid, tanh, relu
-from keras.initializations import glorot_uniform
 
 import theano as T
 import theano.tensor as TS
@@ -22,7 +20,7 @@ class Encoder(Base):
     def compute_mask(self, input, input_mask=None):
         return None
 
-    def get_output_shape_for(self, input_shape):
+    def compute_output_shape(self, input_shape):
         return (self.batch_size, self.hidden_dim)
 
 
